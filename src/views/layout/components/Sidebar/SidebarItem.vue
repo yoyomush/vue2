@@ -1,90 +1,108 @@
 <template>
   <div v-if="!item.hidden" class="menu-wrapper">
-
-    <template v-if="hasOneShowingChild(item.children,item) && (!onlyOneChild.children||onlyOneChild.noShowingChildren)&&!item.alwaysShow">
-      <app-link :to="resolvePath(onlyOneChild.path)">
-        <el-menu-item :index="resolvePath(onlyOneChild.path)" :class="{'submenu-title-noDropdown':!isNest}">
-          <item :meta="Object.assign({},item.meta,onlyOneChild.meta)" />
-        </el-menu-item>
+    <template v-if="isSingleChildVisible">
+      <app-link :to="resolvedPath(onlyOneChild.path)">
+        <el-tooltip
+          :content="onlyOneChild.meta.title"
+          :disabled="!isCollapse"
+          placement="right"
+          effect="dark"
+        >
+          <el-menu-item :index="resolvedPath(onlyOneChild.path)" :class="{'submenu-title-noDropdown': !isNest}" popper-append-to-body >
+            <Item :meta="mergedMeta" />
+          </el-menu-item>
+        </el-tooltip>
       </app-link>
     </template>
 
-    <el-submenu v-else ref="subMenu" :index="resolvePath(item.path)" popper-append-to-body>
-      <template slot="title">
-        <item :meta="item.meta" />
+    <el-sub-menu v-else ref="subMenu" :index="resolvedPath(item.path)" popper-append-to-body>
+      <template #title>
+        <Item :meta="item.meta" />
       </template>
-      <sidebar-item
+      <SidebarItem
         v-for="child in item.children"
         :is-nest="true"
         :item="child"
         :key="child.path"
-        :base-path="resolvePath(child.path)"
+        :base-path="resolvedPath(child.path)"
         class="nest-menu" />
-    </el-submenu>
-
+    </el-sub-menu>
   </div>
 </template>
 
-<script>
-import path from 'path'
+<script setup>
+import { ref, computed } from 'vue'
 import { isExternal } from '@/utils/validate'
-import Item from './Item'
-import AppLink from './Link'
+import Item from './Item.vue'
+import AppLink from './Link.vue'
+import { ElSubMenu, ElMenuItem } from 'element-plus'
 
-export default {
-  name: 'SidebarItem',
-  components: { Item, AppLink },
-  props: {
-    // route object
-    item: {
-      type: Object,
-      required: true
-    },
-    isNest: {
-      type: Boolean,
-      default: false
-    },
-    basePath: {
-      type: String,
-      default: ''
-    }
+const props = defineProps({
+  item: {
+    type: Object,
+    required: true
   },
-  data() {
-    // TODO: refactor with render function
-    this.onlyOneChild = null
-    return {}
+  isNest: {
+    type: Boolean,
+    default: false
   },
-  methods: {
-    hasOneShowingChild(children = [], parent) {
-      const showingChildren = children.filter(item => {
-        if (item.hidden) {
-          return false
-        } else {
-          // Temp set(will be used if only has one showing child)
-          this.onlyOneChild = item
-          return true
-        }
-      })
-
-      // When there is only one child router, the child router is displayed by default
-      if (showingChildren.length === 1) {
-        return true
-      }
-
-      // Show parent if there are no child router to display
-      if (showingChildren.length === 0) {
-        this.onlyOneChild = { ... parent, path: '', noShowingChildren: true }
-        return true
-      }
-
-      return false
-    },
-    resolvePath(routePath) {
-      if (isExternal(routePath)) {
-        return routePath
-      }
-      return path.resolve(this.basePath, routePath)
-    }
+  basePath: {
+    type: String,
+    default: ''
+  },
+  isCollapse: {
+    type: Boolean,
+    required: true
   }
+})
+
+const subMenu = ref(null)
+const onlyOneChild = ref({})
+
+// 计算是否只有一个可显示的子路由
+const isSingleChildVisible = computed(() => hasOneShowingChild(props.item.children, props.item))
+
+// 判断是否只有一个可显示的子路由
+const hasOneShowingChild = (children = [], parent) => {
+  const showingChildren = children.filter(item => !item.hidden)
+  if (showingChildren.length === 1) {
+    onlyOneChild.value = showingChildren[0]
+    return true
+  }
+
+  if (showingChildren.length === 0) {
+    onlyOneChild.value = { ...parent, path: '', noShowingChildren: true }
+    return true
+  }
+  return false
 }
+
+const resolvedPath = (routePath) => {
+  if (isExternal(routePath)) {
+    return routePath
+  }
+  const path = props.basePath + (props.basePath.endsWith('/') ? '' : '/') + routePath
+  return path
+}
+
+// 计算合并的 meta
+const mergedMeta = computed(() => {
+  if (onlyOneChild.value && onlyOneChild.value.meta) {
+    return {
+      ...props.item.meta,
+      ...onlyOneChild.value.meta,
+      icon: onlyOneChild.value.meta?.icon || props.item.meta?.icon // 确保 icon 存在
+    }
+  } else if (props.item.children && props.item.children[0] && props.item.children[0].meta) {
+    return {
+      ...props.item.meta,
+      ...props.item.children[0].meta,
+      icon: props.item.children[0].meta?.icon || props.item.meta?.icon // 确保 icon 存在
+    }
+  } else {
+    return props.item.meta
+  }
+})
+
+
 </script>
